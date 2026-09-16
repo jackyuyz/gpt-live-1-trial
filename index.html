@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dominoes Tutor</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #10271e; color: #f8f6ec; }
+      main { width: min(720px, calc(100% - 32px)); padding: 32px; border: 1px solid #567062; border-radius: 20px; background: #17372a; box-shadow: 0 24px 80px #07150f88; }
+      h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); }
+      .subtitle { color: #c3d5c8; line-height: 1.5; }
+      .controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 12px; }
+      button { border: 0; border-radius: 10px; padding: 12px 18px; font: inherit; font-weight: 700; cursor: pointer; background: #eabf55; color: #1b251d; }
+      button.secondary { background: #365747; color: #f8f6ec; }
+      button:disabled { cursor: wait; opacity: .55; }
+      #status { min-height: 24px; color: #b8d5c0; }
+      #usage { margin: 16px 0 20px; padding: 16px 18px; border: 1px solid #466355; border-radius: 12px; background: #10271e; }
+      #usage[data-state="live"] { border-color: #eabf55; }
+      .usage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .usage-label { font-size: .78rem; color: #eabf55; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+      #usage-model { color: #a9c1af; font-size: .82rem; text-align: right; }
+      #usage[data-state="live"] #usage-model::before { content: "Live · "; color: #eabf55; font-weight: 800; }
+      #usage[data-state="final"] #usage-model::before { content: "Final · "; color: #eabf55; font-weight: 800; }
+      #usage[data-state="unconfirmed"] #usage-model::before { content: "Last seen · "; color: #eabf55; font-weight: 800; }
+      #usage-cost { margin: 6px 0 12px; font-size: clamp(1.8rem, 4vw, 2.4rem); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+      .usage-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+      .usage-stats dt { font-size: .72rem; color: #a9c1af; text-transform: uppercase; letter-spacing: .06em; }
+      .usage-stats dd { margin: 4px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .context-bar { margin-top: 14px; height: 6px; border-radius: 99px; background: #17372a; overflow: hidden; }
+      .context-bar > span { display: block; height: 100%; width: 0; background: #eabf55; transition: width .25s ease; }
+      .usage-note { margin: 12px 0 0; color: #a9c1af; font-size: .8rem; }
+      @media (max-width: 520px) {
+        .usage-stats { grid-template-columns: 1fr 1fr; }
+      }
+      #transcript { min-height: 180px; max-height: 360px; overflow-y: auto; padding: 16px; border: 1px solid #466355; border-radius: 12px; background: #10271e; }
+      .line { margin: 0 0 12px; line-height: 1.5; white-space: pre-wrap; }
+      .label { display: block; font-size: .78rem; color: #eabf55; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+      form { display: flex; gap: 10px; margin-top: 16px; }
+      input { min-width: 0; flex: 1; border: 1px solid #567062; border-radius: 10px; padding: 12px; font: inherit; color: inherit; background: #10271e; }
+      .hint { color: #a9c1af; font-size: .88rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>🁫 Dominoes Tutor</h1>
+      <p class="subtitle">Start a live voice lesson with a patient coach. You can speak naturally, or send a typed question.</p>
+      <div class="controls">
+        <button id="start">Start voice lesson</button>
+        <button id="stop" class="secondary" disabled>End lesson</button>
+      </div>
+      <p id="status" role="status">Ready. Microphone access is requested when you start.</p>
+      <aside id="usage" data-state="idle" aria-live="polite">
+        <div class="usage-head">
+          <span class="usage-label">This session</span>
+          <span id="usage-model">gpt-live-1 · $0.05/min</span>
+        </div>
+        <p id="usage-cost">$0.0000</p>
+        <dl class="usage-stats">
+          <div>
+            <dt>Billed time</dt>
+            <dd id="usage-time">0s</dd>
+          </div>
+          <div>
+            <dt>Context</dt>
+            <dd id="usage-context">—</dd>
+          </div>
+          <div>
+            <dt>Backend tokens</dt>
+            <dd id="usage-tokens">0</dd>
+          </div>
+        </dl>
+        <div class="context-bar" aria-hidden="true"><span id="usage-context-bar"></span></div>
+        <p class="usage-note">GPT-Live bills voice time, not tokens. Cost updates from official usage events; backend tokens appear only if the session delegates extra model work.</p>
+      </aside>
+      <section id="transcript" aria-live="polite">
+        <p class="hint">Your conversation captions will appear here.</p>
+      </section>
+      <form id="message-form">
+        <input id="message" autocomplete="off" placeholder="Type a question, e.g. “How do I start?”" disabled />
+        <button id="send" disabled>Send</button>
+      </form>
+      <p class="hint">The API key stays on the local server; it is never sent to this page.</p>
+    </main>
+    <audio id="assistant-audio" autoplay></audio>
+    <script>
+      const startButton = document.querySelector("#start");
+      const stopButton = document.querySelector("#stop");
+      const status = document.querySelector("#status");
+      const transcript = document.querySelector("#transcript");
+      const form = document.querySelector("#message-form");
+      const message = document.querySelector("#message");
+      const sendButton = document.querySelector("#send");
+      const audio = document.querySelector("#assistant-audio");
+      const usageMeter = document.querySelector("#usage");
+      const usageCost = document.querySelector("#usage-cost");
+      const usageTime = document.querySelector("#usage-time");
+      const usageContext = document.querySelector("#usage-context");
+      const usageTokens = document.querySelector("#usage-tokens");
+      const usageContextBar = document.querySelector("#usage-context-bar");
+
+      const VOICE_USD_PER_MINUTE = 0.05;
+
+      let peer;
+      let events;
+      let microphone;
+      let ready = false;
+      let finalized = false;
+      let closeTimeout;
+      let usageTimer;
+      const rows = new Map();
+      const billedResponseIds = new Set();
+      let usage = createUsageState();
+
+      function createUsageState() {
+        return {
+          apiSeconds: null,
+          apiAt: null,
+          startedAt: null,
+          frozen: false,
+          frozenSeconds: 0,
+          unconfirmed: false,
+          contextRatio: null,
+          backendTokens: 0,
+        };
+      }
+
+      function setConnected(connected) {
+        startButton.disabled = connected;
+        stopButton.disabled = !connected;
+        message.disabled = !connected;
+        sendButton.disabled = !connected;
+      }
+
+      function billedSeconds() {
+        if (usage.frozen) return usage.frozenSeconds;
+        if (usage.apiSeconds != null) return usage.apiSeconds + (Date.now() - usage.apiAt) / 1000;
+        if (usage.startedAt != null) return (Date.now() - usage.startedAt) / 1000;
+        return 0;
+      }
+
+      function formatMoney(usd) {
+        return `$${usd.toFixed(4)}`;
+      }
+
+      function formatDuration(seconds) {
+        const total = Math.max(0, Math.floor(seconds));
+        const minutes = Math.floor(total / 60);
+        const remainder = total % 60;
+        return minutes === 0 ? `${total}s` : `${minutes}m ${String(remainder).padStart(2, "0")}s`;
+      }
+
+      function renderUsage() {
+        const seconds = billedSeconds();
+        usageCost.textContent = formatMoney((seconds / 60) * VOICE_USD_PER_MINUTE);
+        usageTime.textContent = formatDuration(seconds);
+        usageTokens.textContent = usage.backendTokens.toLocaleString();
+        if (typeof usage.contextRatio === "number") {
+          const percent = Math.round(usage.contextRatio * 100);
+          usageContext.textContent = `${percent}%`;
+          usageContextBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+        } else {
+          usageContext.textContent = "—";
+          usageContextBar.style.width = "0%";
+        }
+        usageMeter.dataset.state = usage.frozen
+          ? (usage.unconfirmed ? "unconfirmed" : "final")
+          : (usage.startedAt ? "live" : "idle");
+      }
+
+      function applyUsageSnapshot(event) {
+        const seconds = event?.usage?.seconds;
+        if (typeof seconds === "number") {
+          usage.apiSeconds = seconds;
+          usage.apiAt = Date.now();
+        }
+        const ratio = event?.context_window?.usage_ratio;
+        if (typeof ratio === "number") usage.contextRatio = ratio;
+        renderUsage();
+      }
+
+      function freezeUsage({ unconfirmed, seconds }) {
+        if (usage.frozen) return;
+        usage.frozenSeconds = typeof seconds === "number" ? seconds : billedSeconds();
+        usage.frozen = true;
+        usage.unconfirmed = unconfirmed;
+        stopUsageTimer();
+        renderUsage();
+      }
+
+      function resetUsage() {
+        stopUsageTimer();
+        billedResponseIds.clear();
+        usage = createUsageState();
+        renderUsage();
+      }
+
+      function startUsageTimer() {
+        stopUsageTimer();
+        usageTimer = setInterval(renderUsage, 250);
+      }
+
+      function stopUsageTimer() {
+        clearInterval(usageTimer);
+        usageTimer = undefined;
+      }
+
+      function ingestBackendTokens(event) {
+        const nested = event?.type === "response.event" ? event.event ?? event.response_event : event;
+        if (!nested || (nested.type !== "response.completed" && nested.type !== "response.done")) return;
+        const response = nested.response;
+        const total = response?.usage?.total_tokens;
+        if (typeof total !== "number" || !response?.id || billedResponseIds.has(response.id)) return;
+        billedResponseIds.add(response.id);
+        usage.backendTokens += total;
+        renderUsage();
+      }
+
+      function cleanUp() {
+        clearTimeout(closeTimeout);
+        stopUsageTimer();
+        if (usage.startedAt && !usage.frozen) freezeUsage({ unconfirmed: !finalized });
+        microphone?.getTracks().forEach((track) => track.stop());
+        events?.close();
+        peer?.close();
+        audio.srcObject = null;
+        peer = events = microphone = undefined;
+        ready = false;
+        setConnected(false);
+      }
+
+      function appendCaption(speaker, delta) {
+        const id = `current-${speaker}`;
+        let row = rows.get(id);
+        if (!row) {
+          transcript.querySelector(".hint")?.remove();
+          row = document.createElement("p");
+          row.className = "line";
+          row.innerHTML = `<span class="label">${speaker}</span>`;
+          transcript.append(row);
+          rows.set(id, row);
+        }
+        row.append(document.createTextNode(delta));
+        transcript.scrollTop = transcript.scrollHeight;
+      }
+
+      function handleEvent(event) {
+        if (event.type === "session.started") {
+          ready = true;
+          setConnected(true);
+          usage.startedAt = Date.now();
+          usage.frozen = false;
+          usage.unconfirmed = false;
+          startUsageTimer();
+          renderUsage();
+          status.textContent = "Connected — ask your first dominoes question.";
+        } else if (event.type === "session.usage.updated") {
+          applyUsageSnapshot(event);
+        } else if (event.type === "session.closed") {
+          finalized = true;
+          applyUsageSnapshot(event);
+          freezeUsage({ unconfirmed: false, seconds: event?.usage?.seconds });
+          status.textContent = "Lesson ended.";
+          cleanUp();
+        } else if (event.type === "session.input_transcript.delta") {
+          appendCaption("You", event.delta);
+        } else if (event.type === "session.output_transcript.delta") {
+          appendCaption("Tutor", event.delta);
+        } else if (event.type === "response.event" || event.type === "response.completed" || event.type === "response.done") {
+          ingestBackendTokens(event);
+        } else {
+          console.debug("GPT-Live event:", event);
+        }
+      }
+
+      async function waitForIceGathering(connection) {
+        if (connection.iceGatheringState === "complete") return;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("Timed out gathering connection details.")), 10000);
+          connection.addEventListener("icegatheringstatechange", function onChange() {
+            if (connection.iceGatheringState !== "complete") return;
+            clearTimeout(timer);
+            connection.removeEventListener("icegatheringstatechange", onChange);
+            resolve();
+          });
+        });
+      }
+
+      startButton.addEventListener("click", async () => {
+        startButton.disabled = true;
+        finalized = false;
+        rows.clear();
+        resetUsage();
+        transcript.innerHTML = '<p class="hint">Connecting…</p>';
+        status.textContent = "Requesting microphone access…";
+
+        try {
+          peer = new RTCPeerConnection();
+          peer.addEventListener("track", ({ track }) => {
+            audio.srcObject = new MediaStream([track]);
+            audio.play().catch(() => { status.textContent = "Connected — click the browser’s play control if you cannot hear the tutor."; });
+          });
+          microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
+          microphone.getAudioTracks().forEach((track) => peer.addTrack(track, microphone));
+
+          events = peer.createDataChannel("oai-events");
+          events.addEventListener("message", ({ data }) => handleEvent(JSON.parse(data)));
+          events.addEventListener("close", () => {
+            if (!finalized) {
+              status.textContent = "The live connection was closed.";
+              cleanUp();
+            }
+          });
+
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          await waitForIceGathering(peer);
+
+          status.textContent = "Connecting to your tutor…";
+          const response = await fetch("/api/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sdp: peer.localDescription.sdp }),
+          });
+          if (!response.ok) throw new Error((await response.json()).error ?? "Could not create a live session.");
+          const result = await response.json();
+          await peer.setRemoteDescription({ type: "answer", sdp: result.transport.sdp });
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : String(error);
+          cleanUp();
+        }
+      });
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = message.value.trim();
+        if (!text || !ready || events?.readyState !== "open") return;
+        events.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+        }));
+        appendCaption("You", `${text}\n`);
+        message.value = "";
+      });
+
+      stopButton.addEventListener("click", () => {
+        if (!ready || events?.readyState !== "open") return;
+        stopButton.disabled = true;
+        status.textContent = "Finishing the lesson…";
+        events.send(JSON.stringify({ type: "session.close" }));
+        closeTimeout = setTimeout(() => {
+          status.textContent = "Lesson ended.";
+          cleanUp();
+        }, 15000);
+      });
+    </script>
+  </body>
+</html>
