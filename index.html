@@ -15,6 +15,16 @@
       button { border: 0; border-radius: 10px; padding: 12px 18px; font: inherit; font-weight: 700; cursor: pointer; background: #eabf55; color: #1b251d; }
       button.secondary { background: #365747; color: #f8f6ec; }
       button:disabled { cursor: wait; opacity: .55; }
+      .reasoning-toggle { display: flex; align-items: center; gap: 12px; width: 100%; margin: 0 0 8px; padding: 12px 14px; border: 1px solid #466355; border-radius: 12px; background: #10271e; cursor: pointer; user-select: none; }
+      .reasoning-toggle:has(input:disabled) { cursor: not-allowed; opacity: .72; }
+      .reasoning-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+      .switch { width: 44px; height: 26px; flex-shrink: 0; border-radius: 999px; background: #365747; position: relative; }
+      .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #f8f6ec; transition: transform .2s ease; }
+      .reasoning-toggle input:checked + .switch { background: #eabf55; }
+      .reasoning-toggle input:checked + .switch::after { transform: translateX(18px); }
+      .toggle-copy { display: grid; gap: 2px; min-width: 0; }
+      .toggle-copy strong { font-size: .95rem; }
+      .toggle-copy span { color: #a9c1af; font-size: .82rem; }
       #status { min-height: 24px; color: #b8d5c0; }
       #usage { margin: 16px 0 20px; padding: 16px 18px; border: 1px solid #466355; border-radius: 12px; background: #10271e; }
       #usage[data-state="live"] { border-color: #eabf55; }
@@ -37,8 +47,9 @@
       #transcript { min-height: 180px; max-height: 360px; overflow-y: auto; padding: 16px; border: 1px solid #466355; border-radius: 12px; background: #10271e; }
       .line { margin: 0 0 12px; line-height: 1.5; white-space: pre-wrap; }
       .label { display: block; font-size: .78rem; color: #eabf55; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+      .line.reasoning .label { color: #9ec5ff; }
       form { display: flex; gap: 10px; margin-top: 16px; }
-      input { min-width: 0; flex: 1; border: 1px solid #567062; border-radius: 10px; padding: 12px; font: inherit; color: inherit; background: #10271e; }
+      form input { min-width: 0; flex: 1; border: 1px solid #567062; border-radius: 10px; padding: 12px; font: inherit; color: inherit; background: #10271e; }
       .hint { color: #a9c1af; font-size: .88rem; }
     </style>
   </head>
@@ -47,6 +58,14 @@
       <h1>🁫 Dominoes Tutor</h1>
       <p class="subtitle">Start a live voice lesson with a patient coach. You can speak naturally, or send a typed question.</p>
       <div class="controls">
+        <label class="reasoning-toggle">
+          <input id="reasoning" type="checkbox" checked />
+          <span class="switch" aria-hidden="true"></span>
+          <span class="toggle-copy">
+            <strong>Reasoning layer</strong>
+            <span id="reasoning-hint">On · GPT-5.6 Terra will think through harder questions. Same API key.</span>
+          </span>
+        </label>
         <button id="start">Start voice lesson</button>
         <button id="stop" class="secondary" disabled>End lesson</button>
       </div>
@@ -54,7 +73,7 @@
       <aside id="usage" data-state="idle" aria-live="polite">
         <div class="usage-head">
           <span class="usage-label">This session</span>
-          <span id="usage-model">gpt-live-1 · $0.05/min</span>
+          <span id="usage-model">gpt-live-1 + gpt-5.6-terra</span>
         </div>
         <p id="usage-cost">$0.0000</p>
         <dl class="usage-stats">
@@ -72,16 +91,16 @@
           </div>
         </dl>
         <div class="context-bar" aria-hidden="true"><span id="usage-context-bar"></span></div>
-        <p class="usage-note">GPT-Live bills voice time, not tokens. Cost updates from official usage events; backend tokens appear only if the session delegates extra model work.</p>
+        <p class="usage-note" id="usage-note">Voice is billed by time. With reasoning on, GPT-5.6 Terra tokens are extra.</p>
       </aside>
       <section id="transcript" aria-live="polite">
         <p class="hint">Your conversation captions will appear here.</p>
       </section>
       <form id="message-form">
-        <input id="message" autocomplete="off" placeholder="Type a question, e.g. “How do I start?”" disabled />
+        <input id="message" autocomplete="off" placeholder="Type a question if you prefer not to speak" disabled />
         <button id="send" disabled>Send</button>
       </form>
-      <p class="hint">The API key stays on the local server; it is never sent to this page.</p>
+      <p class="hint">GPT-Live is voice-first. Typed text is injected as live context, not a Realtime chat turn. The API key stays on the local server.</p>
     </main>
     <audio id="assistant-audio" autoplay></audio>
     <script>
@@ -93,14 +112,22 @@
       const message = document.querySelector("#message");
       const sendButton = document.querySelector("#send");
       const audio = document.querySelector("#assistant-audio");
+      const reasoningToggle = document.querySelector("#reasoning");
+      const reasoningHint = document.querySelector("#reasoning-hint");
       const usageMeter = document.querySelector("#usage");
       const usageCost = document.querySelector("#usage-cost");
       const usageTime = document.querySelector("#usage-time");
       const usageContext = document.querySelector("#usage-context");
       const usageTokens = document.querySelector("#usage-tokens");
       const usageContextBar = document.querySelector("#usage-context-bar");
+      const usageModel = document.querySelector("#usage-model");
+      const usageNote = document.querySelector("#usage-note");
 
       const VOICE_USD_PER_MINUTE = 0.05;
+      const REASONING_MODEL = "gpt-5.6-terra";
+      const BACKEND_INPUT_USD_PER_MILLION = 2;
+      const BACKEND_CACHED_USD_PER_MILLION = 0.2;
+      const BACKEND_OUTPUT_USD_PER_MILLION = 12;
 
       let peer;
       let events;
@@ -123,6 +150,8 @@
           unconfirmed: false,
           contextRatio: null,
           backendTokens: 0,
+          backendCost: 0,
+          reasoningEnabled: true,
         };
       }
 
@@ -131,6 +160,29 @@
         stopButton.disabled = !connected;
         message.disabled = !connected;
         sendButton.disabled = !connected;
+        reasoningToggle.disabled = connected;
+        if (connected) {
+          reasoningHint.textContent = usage.reasoningEnabled
+            ? "On for this lesson. End the lesson to change this — Live cannot switch delegation mode mid-session."
+            : "Off for this lesson. End the lesson to attach GPT-5.6 Terra.";
+        } else {
+          syncReasoningCopy();
+        }
+      }
+
+      function reasoningEnabled() {
+        return reasoningToggle.checked;
+      }
+
+      function syncReasoningCopy() {
+        const on = reasoningEnabled();
+        reasoningHint.textContent = on
+          ? "On · GPT-5.6 Terra will think through harder questions. Same API key."
+          : "Off · voice chat only. Turn this on before starting a lesson to attach reasoning.";
+        usageModel.textContent = on ? `gpt-live-1 + ${REASONING_MODEL}` : "gpt-live-1 · $0.05/min";
+        usageNote.textContent = on
+          ? "Voice is billed by time. GPT-5.6 Terra reasoning tokens are extra and use the same API key."
+          : "Voice is billed by time at $0.05/min. Reasoning is off, so backend tokens stay at 0.";
       }
 
       function billedSeconds() {
@@ -153,7 +205,8 @@
 
       function renderUsage() {
         const seconds = billedSeconds();
-        usageCost.textContent = formatMoney((seconds / 60) * VOICE_USD_PER_MINUTE);
+        const voiceCost = (seconds / 60) * VOICE_USD_PER_MINUTE;
+        usageCost.textContent = formatMoney(voiceCost + usage.backendCost);
         usageTime.textContent = formatDuration(seconds);
         usageTokens.textContent = usage.backendTokens.toLocaleString();
         if (typeof usage.contextRatio === "number") {
@@ -206,15 +259,30 @@
         usageTimer = undefined;
       }
 
-      function ingestBackendTokens(event) {
-        const nested = event?.type === "response.event" ? event.event ?? event.response_event : event;
-        if (!nested || (nested.type !== "response.completed" && nested.type !== "response.done")) return;
-        const response = nested.response;
+      function ingestBackendTokens(response) {
         const total = response?.usage?.total_tokens;
         if (typeof total !== "number" || !response?.id || billedResponseIds.has(response.id)) return;
         billedResponseIds.add(response.id);
         usage.backendTokens += total;
+        const input = Number(response.usage.input_tokens) || 0;
+        const output = Number(response.usage.output_tokens) || 0;
+        const cached = Number(response.usage.input_tokens_details?.cached_tokens ?? response.usage.input_token_details?.cached_tokens) || 0;
+        const uncached = Math.max(0, input - cached);
+        usage.backendCost += (uncached * BACKEND_INPUT_USD_PER_MILLION + cached * BACKEND_CACHED_USD_PER_MILLION + output * BACKEND_OUTPUT_USD_PER_MILLION) / 1_000_000;
         renderUsage();
+      }
+
+      function handleResponseEvent(envelope) {
+        const nested = envelope?.event;
+        if (!nested) return;
+        if (nested.type === "response.reasoning_summary_text.delta" && nested.delta) {
+          appendCaption("Reasoning", nested.delta, { reasoning: true });
+        } else if (nested.type === "response.completed" || nested.type === "response.done") {
+          ingestBackendTokens(nested.response);
+          if (ready) status.textContent = "Connected — reasoning result is ready.";
+        } else if (nested.type === "error" || nested.type === "response.failed") {
+          status.textContent = nested.response?.error?.message ?? nested.message ?? "The reasoning model failed.";
+        }
       }
 
       function cleanUp() {
@@ -230,13 +298,13 @@
         setConnected(false);
       }
 
-      function appendCaption(speaker, delta) {
+      function appendCaption(speaker, delta, { reasoning = false } = {}) {
         const id = `current-${speaker}`;
         let row = rows.get(id);
         if (!row) {
           transcript.querySelector(".hint")?.remove();
           row = document.createElement("p");
-          row.className = "line";
+          row.className = reasoning ? "line reasoning" : "line";
           row.innerHTML = `<span class="label">${speaker}</span>`;
           transcript.append(row);
           rows.set(id, row);
@@ -254,7 +322,9 @@
           usage.unconfirmed = false;
           startUsageTimer();
           renderUsage();
-          status.textContent = "Connected — ask your first dominoes question.";
+          status.textContent = usage.reasoningEnabled
+            ? "Connected — harder questions can use GPT-5.6 Terra."
+            : "Connected — voice chat only. Reasoning is off.";
         } else if (event.type === "session.usage.updated") {
           applyUsageSnapshot(event);
         } else if (event.type === "session.closed") {
@@ -267,8 +337,13 @@
           appendCaption("You", event.delta);
         } else if (event.type === "session.output_transcript.delta") {
           appendCaption("Tutor", event.delta);
-        } else if (event.type === "response.event" || event.type === "response.completed" || event.type === "response.done") {
-          ingestBackendTokens(event);
+        } else if (event.type === "session.delegation.created") {
+          rows.delete("current-Reasoning");
+          status.textContent = "Tutor is thinking with GPT-5.6 Terra…";
+        } else if (event.type === "response.event") {
+          handleResponseEvent(event);
+        } else if (event.type === "error") {
+          status.textContent = event.error?.message ?? "A live session error occurred.";
         } else {
           console.debug("GPT-Live event:", event);
         }
@@ -289,9 +364,12 @@
 
       startButton.addEventListener("click", async () => {
         startButton.disabled = true;
+        reasoningToggle.disabled = true;
         finalized = false;
         rows.clear();
         resetUsage();
+        usage.reasoningEnabled = reasoningEnabled();
+        syncReasoningCopy();
         transcript.innerHTML = '<p class="hint">Connecting…</p>';
         status.textContent = "Requesting microphone access…";
 
@@ -321,7 +399,10 @@
           const response = await fetch("/api/session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sdp: peer.localDescription.sdp }),
+            body: JSON.stringify({
+              sdp: peer.localDescription.sdp,
+              reasoning: usage.reasoningEnabled,
+            }),
           });
           if (!response.ok) throw new Error((await response.json()).error ?? "Could not create a live session.");
           const result = await response.json();
@@ -336,13 +417,26 @@
         event.preventDefault();
         const text = message.value.trim();
         if (!text || !ready || events?.readyState !== "open") return;
+        const eventId = `typed_${Date.now()}`;
+        // GPT-Live has no conversation.item.create. Typed text is live context, then a speak prompt.
         events.send(JSON.stringify({
-          type: "conversation.item.create",
-          item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+          type: "session.thinking.append",
+          event_id: `${eventId}_think`,
+          delegation_id: null,
+          content: `The user typed this question: ${text}`,
+        }));
+        events.send(JSON.stringify({
+          type: "session.commentary.append",
+          event_id: `${eventId}_speak`,
+          delegation_id: null,
+          content: "The user just typed a question. Answer that typed question now in your usual spoken tutor style.",
         }));
         appendCaption("You", `${text}\n`);
         message.value = "";
       });
+
+      reasoningToggle.addEventListener("change", syncReasoningCopy);
+      syncReasoningCopy();
 
       stopButton.addEventListener("click", () => {
         if (!ready || events?.readyState !== "open") return;
