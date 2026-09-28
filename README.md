@@ -86,27 +86,19 @@ Main files:
 
 You need an OpenAI API project with access to `gpt-live-1` and `gpt-5.6-terra`.
 
-1. Copy `.env.example` to `.env` and put your project API key in `OPENAI_API_KEY`.
-2. Load that key into the shell (this server does not auto-load `.env`):
-
-   ```bash
-   set -a
-   source .env
-   set +a
-   ```
-
-3. Install packages:
+1. Copy `.env.example` to `.env` and put your project API key in `OPENAI_API_KEY`. The server loads this file on startup. Uncommented values in `.env` override the same variable from your shell (for example `~/.zshrc`). Commented or missing keys still fall back to the shell.
+2. Install packages:
 
    ```bash
    npm install
    ```
 
-4. Start the server:
+3. Start the server:
 
    ```bash
    npm start
    ```
 
-5. Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Reasoning is on by default. Select **Start voice lesson** and allow microphone access.
+4. Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Reasoning is on by default. Select **Start voice lesson** and allow microphone access.
 
 Use `npm run dev` if you want the server to restart when `server.mjs` changes.
