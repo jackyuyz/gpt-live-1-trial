@@ -31,8 +31,8 @@ const app = express();
 const port = Number(process.env.PORT ?? 3000);
 const host = "127.0.0.1";
 
-// OpenAI's GPT-Live guide: start with GPT-5.6 Terra for the Responses reasoning backend.
-const REASONING_MODEL = "gpt-5.6-terra";
+// OpenAI's GPT-Live guide: start with gpt-6-luna for the Responses reasoning backend.
+const REASONING_MODEL = "gpt-6-luna";
 
 const liveVoiceInstructions = [
   "You are Domino, a calm, friendly voice tutor for standard double-six dominoes.",
@@ -48,15 +48,14 @@ const liveDelegationPolicy = [
   "Backend tools:",
   "- Careful reasoning: compare variants, scoring examples, strategy tradeoffs, and multi-step rule explanations.",
   "Delegate to the backend when:",
-  "- The request needs careful reasoning beyond a simple reply.",
-  "- The user asks about scoring, strategy, or how variants differ.",
-  "- A correction changes an explanation already in progress.",
+  "- The request needs careful multi-step reasoning you cannot answer in one or two spoken sentences.",
+  "- The user asks about detailed scoring math, deep strategy, or how several variants differ.",
   "Do not delegate to the backend when:",
-  "- The user greets you or asks you to repeat a result already provided.",
-  "- You can answer from the conversation or a still-current result.",
+  "- The user greets you, chats, or asks you to repeat something already said.",
+  "- You can answer from the conversation in a short spoken reply.",
   "- You need a brief clarification to understand the request.",
-  "Delegate before giving an answer that depends on backend work.",
-  "Do not guess the result while waiting.",
+  "Keep talking. If you do delegate, first say a short spoken acknowledgment, then wait for the backend.",
+  "Never stay silent after the user speaks.",
 ].join(" ");
 
 const liveNoDelegationPolicy = [

@@ -65,7 +65,7 @@
           <span class="switch" aria-hidden="true"></span>
           <span class="toggle-copy">
             <strong>Reasoning layer</strong>
-            <span id="reasoning-hint">On · GPT-5.6 Terra will think through harder questions. Same API key.</span>
+            <span id="reasoning-hint">On · GPT-6 Luna will think through harder questions. Same API key.</span>
           </span>
         </label>
         <button id="start">Start voice lesson</button>
@@ -75,7 +75,7 @@
       <aside id="usage" data-state="idle" aria-live="polite">
         <div class="usage-head">
           <span class="usage-label">This session</span>
-          <span id="usage-model">gpt-live-1 + gpt-5.6-terra</span>
+          <span id="usage-model">gpt-live-1 + gpt-6-luna</span>
         </div>
         <p id="usage-cost">$0.0000</p>
         <dl class="usage-stats">
@@ -93,7 +93,7 @@
           </div>
         </dl>
         <div class="context-bar" aria-hidden="true"><span id="usage-context-bar"></span></div>
-        <p class="usage-note" id="usage-note">Voice is billed by time. With reasoning on, GPT-5.6 Terra tokens are extra.</p>
+        <p class="usage-note" id="usage-note">Voice is billed by time. With reasoning on, GPT-6 Luna tokens are extra.</p>
       </aside>
       <section id="transcript" aria-live="polite">
         <p class="hint">Your conversation captions will appear here.</p>
@@ -126,7 +126,7 @@
       const usageNote = document.querySelector("#usage-note");
 
       const VOICE_USD_PER_MINUTE = 0.05;
-      const REASONING_MODEL = "gpt-5.6-terra";
+      const REASONING_MODEL = "gpt-6-luna";
       const BACKEND_INPUT_USD_PER_MILLION = 2;
       const BACKEND_CACHED_USD_PER_MILLION = 0.2;
       const BACKEND_OUTPUT_USD_PER_MILLION = 12;
@@ -166,7 +166,7 @@
         if (connected) {
           reasoningHint.textContent = usage.reasoningEnabled
             ? "On for this lesson. End the lesson to change this — Live cannot switch delegation mode mid-session."
-            : "Off for this lesson. End the lesson to attach GPT-5.6 Terra.";
+            : "Off for this lesson. End the lesson to attach GPT-6 Luna.";
         } else {
           syncReasoningCopy();
         }
@@ -179,11 +179,11 @@
       function syncReasoningCopy() {
         const on = reasoningEnabled();
         reasoningHint.textContent = on
-          ? "On · GPT-5.6 Terra will think through harder questions. Same API key."
+          ? "On · GPT-6 Luna will think through harder questions. Same API key."
           : "Off · voice chat only. Turn this on before starting a lesson to attach reasoning.";
         usageModel.textContent = on ? `gpt-live-1 + ${REASONING_MODEL}` : "gpt-live-1 · $0.05/min";
         usageNote.textContent = on
-          ? "Voice is billed by time. GPT-5.6 Terra reasoning tokens are extra and use the same API key."
+          ? "Voice is billed by time. GPT-6 Luna reasoning tokens are extra and use the same API key."
           : "Voice is billed by time at $0.05/min. Reasoning is off, so backend tokens stay at 0.";
       }
 
@@ -325,7 +325,7 @@
           startUsageTimer();
           renderUsage();
           status.textContent = usage.reasoningEnabled
-            ? "Connected — harder questions can use GPT-5.6 Terra."
+            ? "Connected — harder questions can use GPT-6 Luna."
             : "Connected — voice chat only. Reasoning is off.";
         } else if (event.type === "session.usage.updated") {
           applyUsageSnapshot(event);
@@ -341,7 +341,7 @@
           appendCaption("Tutor", event.delta);
         } else if (event.type === "session.delegation.created") {
           rows.delete("current-Reasoning");
-          status.textContent = "Tutor is thinking with GPT-5.6 Terra…";
+          status.textContent = "Tutor is thinking with GPT-6 Luna…";
         } else if (event.type === "response.event") {
           handleResponseEvent(event);
         } else if (event.type === "error") {

@@ -14,7 +14,7 @@ Official GPT-Live docs split the product in two:
 This trial follows that recommended path:
 
 - Voice model: `gpt-live-1`
-- Reasoning backend: **GPT-5.6 Terra** (`gpt-5.6-terra`), OpenAI’s suggested starting backend for Live
+- Reasoning backend: **GPT-6 Luna** (`gpt-6-luna`), OpenAI’s current suggested starting backend for Live (`gpt-6-sol` for harder tasks)
 - Mode: `delegation.type: "responses"` when the toggle is on
 
 References:
@@ -22,7 +22,6 @@ References:
 - [Getting started with GPT-Live](https://developers.openai.com/api/docs/guides/live)
 - [Delegation and tools](https://developers.openai.com/api/docs/guides/live-delegation)
 - [Prompting GPT-Live](https://developers.openai.com/api/docs/guides/live-prompting)
-- [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)
 
 ## Reasoning toggle
 
@@ -30,7 +29,7 @@ The **Reasoning layer** switch is **on by default**.
 
 | Toggle | What happens |
 | --- | --- |
-| **On** | Session is created with Responses delegation to GPT-5.6 Terra (`reasoning.effort: medium`, `summary: auto`). Harder questions can be handed off. Reasoning summaries appear in the transcript. Backend tokens are billed extra. |
+| **On** | Session is created with Responses delegation to GPT-6 Luna (`reasoning.effort: medium`, `summary: auto`). Harder questions can be handed off. Reasoning summaries appear in the transcript. Backend tokens are billed extra. |
 | **Off** | Voice chat only. No Responses backend. The live prompt tells the tutor not to delegate. |
 
 Live cannot change delegation mode after `session.started`. Turn the switch **before** you start a lesson. During a call the toggle is locked; end the lesson to change it.
@@ -43,7 +42,7 @@ Live cannot change delegation mode after `session.started`. Turn the switch **be
 | Typed questions + live captions | Yes, as Live context injects — not Realtime chat turns |
 | Session cost / duration meter | Yes |
 | Reasoning / thinking summaries | Yes, when the toggle is on |
-| Delegation to GPT-5.6 Terra | Yes, when the toggle is on |
+| Delegation to GPT-6 Luna | Yes, when the toggle is on |
 | Tools / function calling / web search | No |
 
 ## Billing
@@ -51,7 +50,7 @@ Live cannot change delegation mode after `session.started`. Turn the switch **be
 Two separate bills, one API key:
 
 - **Voice (`gpt-live-1`)**: **$0.05 per minute**, billed per second. Idle time in an open session still counts.
-- **Reasoning (`gpt-5.6-terra`)**: token usage from delegated Responses calls. Published list rates used for the on-page estimate are **$2 / $0.20 / $12** per 1M input / cached input / output tokens.
+- **Reasoning (`gpt-6-luna`)**: token usage from delegated Responses calls, billed at that model’s current Responses rates. The on-page dollar figure is a rough estimate.
 
 The usage panel adds those together. Duration comes from official Live snapshots (`session.usage.updated`, then `session.closed`). Those snapshots are cumulative; they are not amounts to add together.
 
@@ -59,7 +58,7 @@ Creating a WebRTC session bills about 15 seconds of voice time during initializa
 
 ## Usage meter
 
-- **Estimated USD** = voice time + delegated Terra tokens (if any)
+- **Estimated USD** = voice time + delegated Luna tokens (if any)
 - **Billed time** from Live usage events
 - **Context** occupancy from `context_window.usage_ratio`
 - **Backend tokens** from nested `response.completed` events
@@ -71,7 +70,7 @@ End the lesson with **End lesson** so the client can receive `session.closed` an
 
 1. The browser builds a WebRTC peer connection and an `oai-events` data channel.
 2. `POST /api/session` sends the SDP offer plus `{ reasoning: true|false }`.
-3. The server posts to `https://api.openai.com/v1/live/sessions` with `gpt-live-1` and, if reasoning is on, `delegation.responses.model: "gpt-5.6-terra"`.
+3. The server posts to `https://api.openai.com/v1/live/sessions` with `gpt-live-1` and, if reasoning is on, `delegation.responses.model: "gpt-6-luna"`.
 4. The browser applies the SDP answer and waits for `session.started`.
 5. Audio, captions, usage, and nested Responses events arrive over the data channel.
 
@@ -84,7 +83,7 @@ Main files:
 
 ## Run it
 
-You need an OpenAI API project with access to `gpt-live-1` and `gpt-5.6-terra`.
+You need an OpenAI API project with access to `gpt-live-1` and `gpt-6-luna`.
 
 1. Copy `.env.example` to `.env` and put your project API key in `OPENAI_API_KEY`. The server loads this file on startup. Uncommented values in `.env` override the same variable from your shell (for example `~/.zshrc`). Commented or missing keys still fall back to the shell.
 2. Install packages:
